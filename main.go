@@ -54,6 +54,9 @@ func main() {
 	address := *irHost + ":" + *irPort
 	fmt.Println("iRemocon address:", address)
 
+	startExporter(context.Background())
+
+connect:
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -61,14 +64,11 @@ func main() {
 	}
 	defer conn.Close()
 
-	startExporter(context.Background())
-
 	for {
-		func() {
+		err := func() error {
 			res, err := iremocon.Se(conn)
 			if err != nil {
-				fmt.Printf("Error: [%s]\n", err)
-				return
+				return fmt.Errorf("Se failed: [%s]\n", err)
 			}
 
 			res = strings.TrimSpace(res)
@@ -76,32 +76,35 @@ func main() {
 
 			strs := strings.Split(res, ";")
 			if len(strs) < 5 {
-				fmt.Printf("Error: invalid response [%s]\n", res)
-				return
+				return fmt.Errorf("Error: invalid response [%s]\n", res)
 			}
 
 			brightness, err := strconv.ParseFloat(strs[2], 64)
 			if err != nil {
-				fmt.Printf("Error parsing brightness: [%s]\n", err)
-			} else {
-				metBright.Set(brightness)
+				return fmt.Errorf("Error parsing brightness: [%s]\n", err)
 			}
+			metBright.Set(brightness)
 
 			humidity, err := strconv.ParseFloat(strs[3], 64)
 			if err != nil {
-				fmt.Printf("Error parsing humidity: [%s]\n", err)
-			} else {
-				metHum.Set(humidity)
+				return fmt.Errorf("Error parsing humidity: [%s]\n", err)
 			}
+			metHum.Set(humidity)
 
 			temperature, err := strconv.ParseFloat(strs[4], 64)
 			if err != nil {
-				fmt.Printf("Error parsing temperature: [%s]\n", err)
-			} else {
-				metTemp.Set(temperature)
+				return fmt.Errorf("Error parsing temperature: [%s]\n", err)
 			}
+			metTemp.Set(temperature)
+
+			return nil
 		}()
 		time.Sleep(time.Second * 60)
+
+		if err != nil {
+			conn.Close()
+			goto connect
+		}
 	}
 }
 
