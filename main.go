@@ -35,6 +35,13 @@ var (
 			Help: "brightness",
 		},
 	)
+	errCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "iremocon_exporter_error",
+			Help: "erros on iremocon_exporter",
+		},
+		[]string{"type", "detail"},
+	)
 )
 
 func init() {
@@ -57,10 +64,17 @@ func main() {
 	startExporter(context.Background())
 
 connect:
-	conn, err := net.Dial("tcp", address)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return
+	var conn net.Conn
+	var err error
+	for {
+		conn, err = net.Dial("tcp", address)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			errCount.WithLabelValues("conn", err.Error()).Inc()
+			time.Sleep(time.Minute)
+			continue
+		}
+		break
 	}
 	defer conn.Close()
 
@@ -102,6 +116,7 @@ connect:
 		time.Sleep(time.Second * 60)
 
 		if err != nil {
+			errCount.WithLabelValues("se", err.Error()).Inc()
 			conn.Close()
 			goto connect
 		}
